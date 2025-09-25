@@ -9,13 +9,32 @@ class PersonaController extends BaseController
     public function listar(): string
     {
         $persona = new Persona();
+        $pager = \Config\Services::pager();
 
-        $datos['personas'] = $persona->orderBy('idpersona', 'ASC')->findAll();
+        // Número de registros por página
+        $perPage = 10; 
+
+        // Total de registros en la base de datos
+        $totalRows = $persona->countAll();
+
+        // Obtener la página actual de la URL
+        $currentPage = $this->request->getVar('page') ?? 1;
+
+        // Obtener los datos de personas con paginación
+        $datos['personas'] = $persona->orderBy('idpersona', 'ASC')
+                                      ->paginate($perPage, 'default', $currentPage);
+
+        // Configurar los enlaces de paginación
+        $datos['pagination'] = $pager->links();
+
+        // Pasar el total de registros a la vista
+        $datos['total_personas'] = $totalRows;
 
         // Header y Footer
         $datos['header'] = view('Layouts/header');
         $datos['footer'] = view('Layouts/footer');
 
+        // Cargar la vista con los datos
         return view('personas/listar', $datos);
     }
 
@@ -23,7 +42,6 @@ class PersonaController extends BaseController
     {
         $datos['header'] = view('Layouts/header');
         $datos['footer'] = view('Layouts/footer');
-
         return view('personas/crear', $datos);
     }
 
@@ -31,73 +49,69 @@ class PersonaController extends BaseController
     {
         $persona = new Persona();
 
-        $datos['header'] = view('Layouts/header');
-        $datos['footer'] = view('Layouts/footer');
-        $result = $persona->where('idpersona', $id)->first();
+        $result = $persona->find($id);
 
-        if (!$result){ 
+        if (!$result) {
             return $this->response->redirect(base_url('personas/listar'));
         } else {
             $datos['persona'] = $result;
+            $datos['header'] = view('Layouts/header');
+            $datos['footer'] = view('Layouts/footer');
             return view('personas/editar', $datos);
         }
     }
 
-    // Insertar registro
     public function guardar()
     {
-    $persona = new Persona();
+        $persona = new Persona();
 
-    $numerodoc = $this->request->getVar('numerodoc');
+        $numerodoc = $this->request->getVar('numerodoc');
+        $existe = $persona->where('numerodoc', $numerodoc)->first();
 
-    // 🔒 Verificar si ya existe ese DNI
-    $existe = $persona->where('numerodoc', $numerodoc)->first();
-
-    if ($existe) {
-        // Redirige de vuelta con advertencia y mantiene los datos
-        return redirect()->back()->with('error', '⚠️ El número de documento (DNI) ya está registrado.')->withInput();
-    }
-
-    $registro = [
-        'apepaterno'       => $this->request->getVar('apepaterno'),
-        'apematerno'       => $this->request->getVar('apematerno'),
-        'nombres'          => $this->request->getVar('nombres'),
-        'tipodoc'          => $this->request->getVar('tipodoc'),
-        'numerodoc'        => $numerodoc,
-        'direccion'        => $this->request->getVar('direccion'),
-        'telefono'         => $this->request->getVar('telefono'),
-        'email'            => $this->request->getVar('email'),
-        'fecha_nacimiento' => $this->request->getVar('fecha_nacimiento'),
-        'sexo'             => $this->request->getVar('sexo')
-    ];
-
-    // Manejo de imagen
-    if ($imagen = $this->request->getFile('imagenperfil')) {
-        if ($imagen->isValid() && !$imagen->hasMoved()) {
-            $nuevoNombre = $imagen->getRandomName();
-            $imagen->move('../public/uploads/', $nuevoNombre);
-            $registro['imagenperfil'] = $nuevoNombre;
+        if ($existe) {
+            return redirect()->back()->with('error', '⚠️ El número de documento (DNI) ya está registrado.')->withInput();
         }
-    }
 
-    $persona->insert($registro);
-    return $this->response->redirect(base_url('personas/listar'));
-    }
+        $registro = [
+            'apepaterno'       => $this->request->getVar('apepaterno'),
+            'apematerno'       => $this->request->getVar('apematerno'),
+            'nombres'          => $this->request->getVar('nombres'),
+            'tipodoc'          => $this->request->getVar('tipodoc'),
+            'numerodoc'        => $numerodoc,
+            'direccion'        => $this->request->getVar('direccion'),
+            'telefono'         => $this->request->getVar('telefono'),
+            'email'            => $this->request->getVar('email'),
+            'fecha_nacimiento' => $this->request->getVar('fecha_nacimiento'),
+            'sexo'             => $this->request->getVar('sexo')
+        ];
 
+        // Manejo de imagen
+        if ($imagen = $this->request->getFile('imagenperfil')) {
+            if ($imagen->isValid() && !$imagen->hasMoved()) {
+                $nuevoNombre = $imagen->getRandomName();
+                $imagen->move('../public/uploads/', $nuevoNombre);
+                $registro['imagenperfil'] = $nuevoNombre;
+            }
+        }
+
+        $persona->insert($registro);
+        return $this->response->redirect(base_url('personas/listar'));
+    }
 
     public function borrar($id = null)
     {
         $persona = new Persona();
 
         // Borrar imagen asociada
-        $datosPersona = $persona->where('idpersona', $id)->first();
-        if ($datosPersona && !empty($datosPersona['imagenperfil'])){
-            $rutaImagen = '../public/uploads/' . $datosPersona['imagenperfil'];
-            if (file_exists($rutaImagen)){ unlink($rutaImagen); }
+        $personaData = $persona->find($id);
+        if ($personaData && !empty($personaData['imagenperfil'])) {
+            $rutaImagen = '../public/uploads/' . $personaData['imagenperfil'];
+            if (file_exists($rutaImagen)) {
+                unlink($rutaImagen);
+            }
         }
 
-        // Borrar registro
-        $persona->where('idpersona', $id)->delete($id);
+        $persona->delete($id);
 
         return $this->response->redirect(base_url('personas/listar'));
     }
@@ -107,7 +121,6 @@ class PersonaController extends BaseController
         $persona = new Persona();
 
         $id = $this->request->getVar('idpersona');
-
         $datos = [
             'apepaterno'       => $this->request->getVar('apepaterno'),
             'apematerno'       => $this->request->getVar('apematerno'),
@@ -132,12 +145,15 @@ class PersonaController extends BaseController
             ]
         ]);
 
-        if ($validacion){
-            if ($imagen = $this->request->getFile('imagenperfil')){
-                $datosPersona = $persona->where('idpersona', $id)->first();
-                if ($datosPersona && !empty($datosPersona['imagenperfil'])){
-                    $rutaImagen = '../public/uploads/' . $datosPersona['imagenperfil'];
-                    if (file_exists($rutaImagen)) { unlink($rutaImagen); }
+        if ($validacion) {
+            if ($imagen = $this->request->getFile('imagenperfil')) {
+                // Eliminar imagen antigua si existe
+                $personaData = $persona->find($id);
+                if ($personaData && !empty($personaData['imagenperfil'])) {
+                    $rutaImagen = '../public/uploads/' . $personaData['imagenperfil'];
+                    if (file_exists($rutaImagen)) {
+                        unlink($rutaImagen);
+                    }
                 }
 
                 $nuevoNombre = $imagen->getRandomName();

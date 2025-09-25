@@ -21,9 +21,7 @@ class Asistencia extends Model
     protected $returnType    = 'array';
     protected $useTimestamps = false;
 
-    /**
-     * 🔍 Devuelve asistencias con info de alumno y grupo
-     */
+    
     public function getAsistenciasConDetalles($filtros = [])
     {
         $builder = $this->select("
@@ -35,12 +33,11 @@ class Asistencia extends Model
             ->join('personas p', 'p.idpersona = m.idalumno')
             ->join('grupos g', 'g.idgrupo = m.idgrupo');
 
-        // filtro por fecha
         if (!empty($filtros['fecha'])) {
             $builder->where('asistencia.fecha', $filtros['fecha']);
         }
 
-        // filtro por grupo
+       
         if (!empty($filtros['idgrupo'])) {
             $builder->where('g.idgrupo', $filtros['idgrupo']);
         }

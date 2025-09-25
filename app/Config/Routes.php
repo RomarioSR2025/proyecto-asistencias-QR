@@ -41,6 +41,8 @@ $routes->post('matriculas/guardar', 'MatriculaController::guardar');
 $routes->get('matriculas/editar/(:num)', 'MatriculaController::editar/$1');
 $routes->post('matriculas/actualizar/(:num)', 'MatriculaController::actualizar/$1');
 $routes->get('matriculas/borrar/(:num)', 'MatriculaController::borrar/$1');
+$routes->get('matriculas/carnet/(:num)', 'MatriculaController::carnet/$1');
+
 
 $routes->get('asistencias/listar', 'AsistenciaController::listar');
 $routes->get('asistencias/tomar/(:num)', 'AsistenciaController::tomar/$1'); 
@@ -50,9 +52,20 @@ $routes->get('asistencias/editar/(:num)', 'AsistenciaController::editar/$1');
 $routes->post('asistencias/actualizar', 'AsistenciaController::actualizar');
 $routes->get('asistencias/borrar/(:num)', 'AsistenciaController::borrar/$1');
 
-$routes->get('/admin', 'AdminController::dashboard');
-$routes->get('/admin/login', 'AdminController::login');
-$routes->get('/admin/register', 'AdminController::register');
+$routes->get('login', 'AuthController::login');
+$routes->post('login', 'AuthController::loginPost');
+$routes->get('logout', 'AuthController::logout');
+
+// Rutas protegidas
+$routes->group('', ['filter' => 'auth'], function($routes) {
+    $routes->get('usuarios/listar', 'UsuarioController::listar');
+    $routes->get('usuarios/crear', 'UsuarioController::crear', ['filter' => 'role:Administrador']);
+    $routes->post('usuarios/guardar', 'UsuarioController::guardar', ['filter' => 'role:Administrador']);
+    $routes->get('usuarios/editar/(:num)', 'UsuarioController::editar/$1', ['filter' => 'role:Administrador']);
+    $routes->post('usuarios/actualizar/(:num)', 'UsuarioController::actualizar/$1', ['filter' => 'role:Administrador']);
+    $routes->get('usuarios/borrar/(:num)', 'UsuarioController::borrar/$1', ['filter' => 'role:Administrador']);
+});
+
 
 
 

@@ -5,6 +5,10 @@ use App\Models\Asistencia;
 use App\Models\Grupo;
 use App\Models\Matricula;
 use App\Models\Persona;
+use App\Models\QrLog;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
 
 class AsistenciaController extends BaseController
 {
@@ -28,17 +32,12 @@ class AsistenciaController extends BaseController
         return view('asistencias/listar', $data);
     }
 
-    /**
-     * Mostrar formulario para tomar asistencia.
-     * Acepta $idgrupo por URL o por GET (por seguridad).
-     */
+
     public function tomar($idgrupo = null)
     {
-        // Prioriza parámetro de función, si no viene tomar de GET
         $idgrupo = $idgrupo ?? $this->request->getGet('idgrupo');
 
         if (empty($idgrupo)) {
-            // Si no hay grupo, redirigimos al listado con mensaje
             return redirect()->to(base_url('asistencias/listar'))
                              ->with('error', 'Seleccione un grupo para tomar asistencia.');
         }
@@ -48,14 +47,12 @@ class AsistenciaController extends BaseController
 
         $fecha = $this->request->getGet('fecha') ?? date('Y-m-d');
 
-        // info del grupo
         $grupo = $grupoModel->find((int)$idgrupo);
         if (!$grupo) {
             return redirect()->to(base_url('asistencias/listar'))
                              ->with('error', 'Grupo no encontrado.');
         }
 
-        // alumnos matriculados en el grupo (activos)
         $alumnos = $matriculaModel
             ->select('matriculas.idmatricula, personas.nombres, personas.apepaterno, personas.apematerno')
             ->join('personas', 'personas.idpersona = matriculas.idalumno')
@@ -74,31 +71,22 @@ class AsistenciaController extends BaseController
         return view('asistencias/tomar', $data);
     }
 
-    /**
-     * Guardar asistencia. No requiere $idgrupo en la firma:
-     * toma idgrupo de POST (form), o redirige si falta.
-     */
+
     public function guardar()
     {
         $asistenciaModel = new Asistencia();
 
-        // fecha y idgrupo vienen desde el formulario
         $fecha   = $this->request->getPost('fecha') ?? date('Y-m-d');
         $idgrupo = $this->request->getPost('idgrupo') ?? $this->request->getPost('grupo') ?? '';
 
-        // Soportar dos formatos de envío:
-        // 1) nombre="asistencias[0][idmatricula]" etc.  -> POST['asistencias'] is array of rows
-        // 2) nombre="estado[<idmatricula>]" etc.       -> POST['estado'] keyed by idmatricula
         $rows_by_index = $this->request->getPost('asistencias');
-        $estados_by_id = $this->request->getPost('estado');      // opcional
-        $hentrada_by_id = $this->request->getPost('hentrada');  // opcional (if used)
-        $hsalida_by_id  = $this->request->getPost('hsalida');   // opcional
-        $metodo_by_id   = $this->request->getPost('metodo');    // opcional
+        $estados_by_id = $this->request->getPost('estado');     
+        $hentrada_by_id = $this->request->getPost('hentrada');  
+        $hsalida_by_id  = $this->request->getPost('hsalida');   
+        $metodo_by_id   = $this->request->getPost('metodo');   
 
-        // Caso A: filas indexadas (array de filas)
         if (!empty($rows_by_index) && is_array($rows_by_index)) {
             foreach ($rows_by_index as $row) {
-                // row puede tener idmatricula, estado, hentrada, hsalida, mintardanza, metodo
                 $idmatricula = (int) ($row['idmatricula'] ?? 0);
                 if ($idmatricula <= 0) continue;
 
@@ -112,7 +100,6 @@ class AsistenciaController extends BaseController
                     'metodo'      => $row['metodo'] ?? 'Manual',
                 ];
 
-                // upsert según unique (idmatricula, fecha)
                 $exist = $asistenciaModel->where('idmatricula', $idmatricula)->where('fecha', $fecha)->first();
                 if ($exist) {
                     $asistenciaModel->update($exist['idasistencia'], $data);
@@ -121,7 +108,6 @@ class AsistenciaController extends BaseController
                 }
             }
         }
-        // Caso B: inputs por id (estado[idmatricula], hentrada[idmatricula], ...)
         elseif (!empty($estados_by_id) && is_array($estados_by_id)) {
             foreach ($estados_by_id as $idmatricula => $estado) {
                 $idmatricula = (int)$idmatricula;
@@ -137,7 +123,6 @@ class AsistenciaController extends BaseController
                     'metodo'      => $metodo_by_id[$idmatricula] ?? 'Manual',
                 ];
 
-                // calcular mintardanza si se requiere (ejemplo: límite 08:00)
                 if (!empty($data['hentrada'])) {
                     $horaEntrada = strtotime($data['hentrada']);
                     $horaLimite = strtotime('08:00:00'); // ajustar según tu regla
@@ -152,12 +137,131 @@ class AsistenciaController extends BaseController
                 }
             }
         } else {
-            // nada para guardar
             return redirect()->back()->with('error', 'No hay datos de asistencia para guardar.');
         }
 
-        // redirigir al listado para ver resultados
         $redir = base_url("asistencias/listar?fecha={$fecha}") . ($idgrupo ? "&idgrupo={$idgrupo}" : "");
         return redirect()->to($redir)->with('success', 'Asistencia guardada correctamente.');
+    }
+
+    public function registrarPorQR($codigo_qr)
+    {
+        $fecha = date('Y-m-d');
+        $hora  = date('H:i:s');
+        $horaLimite = strtotime('08:00:00');
+
+        $idgrupoActual = $this->request->getGet('idgrupo');
+
+        $matriculaModel  = new Matricula();
+        $asistenciaModel = new Asistencia();
+        $qrLogModel      = new QrLog();
+
+        $matricula = $matriculaModel->where('codigo_qr', $codigo_qr)->first();
+
+        if (!$matricula) {
+            return $this->response->setStatusCode(404)->setBody("❌ QR inválido o alumno no registrado.");
+        }
+
+        if ($idgrupoActual && $matricula['idgrupo'] != $idgrupoActual) {
+            return $this->response->setStatusCode(403)->setBody("🚫 Este alumno no pertenece al grupo seleccionado.");
+        }
+
+        $mintardanza = 0;
+        $estado = 'Asistió';
+
+        $horaEntrada = strtotime($hora);
+        if ($horaEntrada > $horaLimite) {
+            $mintardanza = round(($horaEntrada - $horaLimite) / 60);
+            $estado = 'Tardanza';
+        }
+
+        $datosAsistencia = [
+            'idmatricula' => $matricula['idmatricula'],
+            'fecha'       => $fecha,
+            'hentrada'    => $hora,
+            'hsalida'     => null,
+            'mintardanza' => $mintardanza,
+            'estado'      => $estado,
+            'metodo'      => 'QR',
+        ];
+
+        $existente = $asistenciaModel->where('idmatricula', $matricula['idmatricula'])
+                                     ->where('fecha', $fecha)
+                                     ->first();
+
+        if ($existente) {
+            $asistenciaModel->update($existente['idasistencia'], $datosAsistencia);
+        } else {
+            $asistenciaModel->insert($datosAsistencia);
+        }
+
+        $qrLogModel->insert([
+            'codigo_qr'   => $codigo_qr,
+            'fecha'       => $fecha,
+            'hora'        => $hora,
+            'idmatricula' => $matricula['idmatricula'],
+        ]);
+
+        return $this->response->setStatusCode(200)->setBody("✅ Asistencia registrada para el alumno.");
+    }
+
+
+    public function exportar()
+    {
+        $asistenciaModel = new Asistencia();
+
+        $fecha   = $this->request->getGet('fecha') ?? date('Y-m-d');
+        $idgrupo = $this->request->getGet('idgrupo') ?? '';
+
+        $filtros = ['fecha' => $fecha];
+        if ($idgrupo !== '') {
+            $filtros['idgrupo'] = $idgrupo;
+        }
+
+        $asistencias = $asistenciaModel->getAsistenciasConDetalles($filtros);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $columnTitles = ['#', 'Alumno', 'Grupo', 'Fecha', 'Entrada', 'Salida', 'Tardanza (min)', 'Estado', 'Método'];
+
+        // Escribir títulos
+        $col = 'A';
+        foreach ($columnTitles as $title) {
+            $sheet->setCellValue($col.'1', $title);
+            $col++;
+        }
+
+        // Escribir datos
+        $rowNum = 2;
+        foreach ($asistencias as $i => $a) {
+            $sheet->setCellValue('A'.$rowNum, $i + 1);
+            $sheet->setCellValue('B'.$rowNum, $a['alumno']);
+            $sheet->setCellValue('C'.$rowNum, $a['grupo']);
+            $sheet->setCellValue('D'.$rowNum, $a['fecha']);
+            $sheet->setCellValue('E'.$rowNum, $a['hentrada'] ?? '--');
+            $sheet->setCellValue('F'.$rowNum, $a['hsalida'] ?? '--');
+            $sheet->setCellValue('G'.$rowNum, $a['mintardanza'] ?? 0);
+            $sheet->setCellValue('H'.$rowNum, $a['estado']);
+            $sheet->setCellValue('I'.$rowNum, $a['metodo']);
+            $rowNum++;
+        }
+
+        // Autoajustar ancho columnas
+        foreach (range('A', 'I') as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+
+        $filename = "Asistencias_{$fecha}" . ($idgrupo ? "_grupo{$idgrupo}" : "") . ".xlsx";
+
+        // Enviar headers para descarga
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="'. $filename .'"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit;
     }
 }

@@ -1,7 +1,11 @@
 <?php
 namespace App\Controllers;
 
+use App\Controllers\BaseController;
 use App\Models\Usuario;
+use App\Models\Persona;
+use App\Models\Rol;
+use App\Models\UsuarioRol;
 
 class UsuarioController extends BaseController
 {
@@ -10,7 +14,6 @@ class UsuarioController extends BaseController
         $usuarioModel = new Usuario();
         $data['usuarios'] = $usuarioModel->getUsuariosConPersona();
 
-        // Header y Footer
         $data['header'] = view('layouts/header');
         $data['footer'] = view('layouts/footer');
 
@@ -19,10 +22,12 @@ class UsuarioController extends BaseController
 
     public function crear()
     {
-        $personaModel = new \App\Models\Persona();
-        $data['personas'] = $personaModel->orderBy('idpersona', 'ASC')->findAll();
+        $personaModel = new Persona();
+        $rolModel = new Rol();
 
-        // Header y Footer
+        $data['personas'] = $personaModel->findAll();
+        $data['roles']    = $rolModel->findAll();
+
         $data['header'] = view('layouts/header');
         $data['footer'] = view('layouts/footer');
 
@@ -32,109 +37,110 @@ class UsuarioController extends BaseController
     public function guardar()
     {
         $usuarioModel = new Usuario();
+        $usuarioRolModel = new UsuarioRol();
 
-        $nomuser = $this->request->getVar('nomuser');
-        $passuser = $this->request->getVar('passuser');
-        $estado = $this->request->getVar('estado');
-        $idpersona = $this->request->getVar('idpersona');
+        $nomuser   = $this->request->getPost('nomuser');
+        $passuser  = $this->request->getPost('passuser');
+        $estado    = $this->request->getPost('estado');
+        $idpersona = $this->request->getPost('idpersona');
+        $idrol     = $this->request->getPost('idrol');
 
-        // 🔒 Verificar si ya existe ese nombre de usuario
-        $existe = $usuarioModel->where('nomuser', $nomuser)->first();
-
-        if ($existe) {
-            // Redirige de vuelta con advertencia y mantiene los datos
-            return redirect()->back()->with('error', '⚠️ El nombre de usuario ya está registrado.')->withInput();
+        if ($usuarioModel->where('nomuser', $nomuser)->first()) {
+            return redirect()->back()->with('error', '⚠️ El usuario ya existe.')->withInput();
         }
 
-        // Hashear la contraseña antes de guardarla
-        $hashedPassword = password_hash($passuser, PASSWORD_BCRYPT);
-
-        $datos = [
-            'nomuser' => $nomuser,
-            'passuser' => $hashedPassword,
-            'estado' => $estado,
+        $usuarioModel->insert([
+            'nomuser'   => $nomuser,
+            'passuser'  => password_hash($passuser, PASSWORD_BCRYPT),
+            'estado'    => $estado,
             'idpersona' => $idpersona
-        ];
+        ]);
 
-        $usuarioModel->insert($datos);
-        return redirect()->to(base_url('usuarios/listar'))->with('success', '✅ Usuario creado exitosamente.');
+        $idusuario = $usuarioModel->getInsertID();
+
+        if (!empty($idrol)) {
+            $usuarioRolModel->insert([
+                'idusuario' => $idusuario,
+                'idrol'     => $idrol
+            ]);
+        }
+
+        return redirect()->to(base_url('usuarios/listar'))->with('success', '✅ Usuario creado correctamente.');
     }
 
-    public function editar($id = null)
+    public function editar($idusuario = null)
     {
         $usuarioModel = new Usuario();
-        $personaModel = new \App\Models\Persona();
+        $personaModel = new Persona();
+        $rolModel     = new Rol();
+        $usuarioRolModel = new UsuarioRol();
 
-        $data['usuario'] = $usuarioModel->where('idusuario', $id)->first();
-        $data['personas'] = $personaModel->orderBy('idpersona', 'ASC')->findAll();
+        $data['usuario']  = $usuarioModel->find($idusuario);
+        $data['personas'] = $personaModel->findAll();
+        $data['roles']    = $rolModel->findAll();
+        $data['rolActual'] = $usuarioRolModel->where('idusuario', $idusuario)->first();
 
         if (!$data['usuario']) {
             return redirect()->to(base_url('usuarios/listar'))->with('error', '⚠️ Usuario no encontrado.');
         }
 
-        // Header y Footer
         $data['header'] = view('layouts/header');
         $data['footer'] = view('layouts/footer');
 
         return view('usuarios/editar', $data);
     }
 
-    
     public function actualizar($idusuario)
-{
-    $usuarioModel = new \App\Models\Usuario();
-
-    $nomuser   = $this->request->getPost('nomuser');
-    $passuser  = $this->request->getPost('passuser');
-    $estado    = $this->request->getPost('estado');
-    $idpersona = $this->request->getPost('idpersona');
-
-    // Verificar si el usuario existe
-    $usuarioExistente = $usuarioModel->find($idusuario);
-    if (!$usuarioExistente) {
-        return redirect()->to(base_url('usuarios/listar'))
-                         ->with('error', '⚠️ Usuario no encontrado.');
-    }
-
-    // Verificar si el nombre de usuario ya existe en otro usuario
-    $existe = $usuarioModel->where('nomuser', $nomuser)
-                           ->where('idusuario !=', $idusuario)
-                           ->first();
-    if ($existe) {
-        return redirect()->back()
-                         ->with('error', '⚠️ El nombre de usuario ya está registrado.')
-                         ->withInput();
-    }
-
-    // Datos para actualizar
-    $datos = [
-        'nomuser'   => $nomuser,
-        'estado'    => $estado,
-        'idpersona' => $idpersona
-    ];
-
-    // Solo actualizar contraseña si fue ingresada
-    if (!empty($passuser)) {
-        $datos['passuser'] = password_hash($passuser, PASSWORD_BCRYPT);
-    }
-
-    $usuarioModel->update($idusuario, $datos);
-
-    return redirect()->to(base_url('usuarios/listar'))
-                     ->with('success', '✅ Usuario actualizado exitosamente.');
-    }
-    public function borrar($id = null)
     {
         $usuarioModel = new Usuario();
+        $usuarioRolModel = new UsuarioRol();
 
-        // Verificar si el usuario existe
-        $usuarioExistente = $usuarioModel->where('idusuario', $id)->first();
-        if (!$usuarioExistente) {
+        $nomuser   = $this->request->getPost('nomuser');
+        $passuser  = $this->request->getPost('passuser');
+        $estado    = $this->request->getPost('estado');
+        $idpersona = $this->request->getPost('idpersona');
+        $idrol     = $this->request->getPost('idrol');
+
+        $usuario = $usuarioModel->find($idusuario);
+        if (!$usuario) {
             return redirect()->to(base_url('usuarios/listar'))->with('error', '⚠️ Usuario no encontrado.');
         }
 
-        $usuarioModel->delete($id);
-        return redirect()->to(base_url('usuarios/listar'))->with('success', '✅ Usuario eliminado exitosamente.');
+        $datos = [
+            'nomuser'   => $nomuser,
+            'estado'    => $estado,
+            'idpersona' => $idpersona
+        ];
+
+        if (!empty($passuser)) {
+            $datos['passuser'] = password_hash($passuser, PASSWORD_BCRYPT);
+        }
+
+        $usuarioModel->update($idusuario, $datos);
+
+        $usuarioRolModel->where('idusuario', $idusuario)->delete();
+        if (!empty($idrol)) {
+            $usuarioRolModel->insert([
+                'idusuario' => $idusuario,
+                'idrol'     => $idrol
+            ]);
+        }
+
+        return redirect()->to(base_url('usuarios/listar'))->with('success', '✅ Usuario actualizado correctamente.');
+    }
+
+    public function borrar($idusuario = null)
+    {
+        $usuarioModel = new Usuario();
+        $usuarioRolModel = new UsuarioRol();
+
+        if (!$usuarioModel->find($idusuario)) {
+            return redirect()->to(base_url('usuarios/listar'))->with('error', '⚠️ Usuario no encontrado.');
+        }
+
+        $usuarioRolModel->where('idusuario', $idusuario)->delete();
+        $usuarioModel->delete($idusuario);
+
+        return redirect()->to(base_url('usuarios/listar'))->with('success', '✅ Usuario eliminado correctamente.');
     }
 }
-

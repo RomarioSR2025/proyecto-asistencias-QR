@@ -1,102 +1,120 @@
 <?= $header; ?>
 
 <div class="container mt-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4>Listado de Matrículas</h4>
-    <a href="<?= base_url('matriculas/crear'); ?>" class="btn btn-primary btn-sm">Nueva Matrícula</a>
-  </div>
+  <h4 class="mb-3">Listado de Matrículas</h4>
 
-  <!-- Filtro de búsqueda -->
-  <form action="<?= base_url('matriculas/listar'); ?>" method="get" class="row g-2 mb-3">
+  <!-- FILTROS -->
+  <form method="get" action="<?= base_url('matriculas/listar'); ?>" class="row g-2 mb-3">
     <div class="col-md-3">
-      <input type="text" name="alumno" class="form-control" 
-             placeholder="Buscar por alumno" value="<?= esc($filtros['alumno'] ?? '') ?>">
+      <select name="anio" class="form-select">
+        <option value="">-- Año Escolar --</option>
+        <?php foreach ($anios as $anio): ?>
+          <option value="<?= $anio; ?>" <?= ($anio == $filtros['anio']) ? 'selected' : ''; ?>>
+            <?= $anio; ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
     </div>
     <div class="col-md-3">
-      <select name="idgrupo" class="form-select">
-        <option value="">-- Grupo --</option>
-        <?php foreach ($grupos as $grupo): ?>
-          <option value="<?= $grupo['idgrupo']; ?>" 
-            <?= isset($filtros['idgrupo']) && $filtros['idgrupo'] == $grupo['idgrupo'] ? 'selected' : ''; ?>>
-            <?= $grupo['grado'].' '.$grupo['seccion'].' - '.$grupo['nivel'].' ('.$grupo['alectivo'].')'; ?>
+      <select name="nivel" class="form-select">
+        <option value="">-- Nivel --</option>
+        <?php foreach ($niveles as $nivel): ?>
+          <option value="<?= $nivel; ?>" <?= ($nivel == $filtros['nivel']) ? 'selected' : ''; ?>>
+            <?= $nivel; ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select name="grado" class="form-select">
+        <option value="">-- Grado --</option>
+        <?php foreach ($grados as $grado): ?>
+          <option value="<?= $grado; ?>" <?= ($grado == $filtros['grado']) ? 'selected' : ''; ?>>
+            <?= $grado; ?>
           </option>
         <?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-2">
-      <input type="number" name="anio_escolar" class="form-control" 
-             placeholder="Año" value="<?= esc($filtros['anio_escolar'] ?? '') ?>">
-    </div>
-    <div class="col-md-2">
-      <select name="estado" class="form-select">
-        <option value="">-- Estado --</option>
-        <option value="Activo" <?= ($filtros['estado'] ?? '') == 'Activo' ? 'selected' : ''; ?>>Activo</option>
-        <option value="Inactivo" <?= ($filtros['estado'] ?? '') == 'Inactivo' ? 'selected' : ''; ?>>Inactivo</option>
-      </select>
-    </div>
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-outline-secondary w-100">Filtrar</button>
+      <button type="submit" class="btn btn-primary w-100">
+        <i class="bi bi-search"></i> Buscar
+      </button>
     </div>
   </form>
 
-  <!-- Tabla -->
-  <table class="table table-bordered table-striped">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Alumno</th>
-        <th>Apoderado</th>
-        <th>Parentesco</th>
-        <th>Grupo</th>
-        <th>Año Escolar</th>
-        <th>Turno</th>
-        <th>Fecha Matrícula</th>
-        <th>Estado</th>
-        <th>QR</th>
-        <th>Opciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php if (!empty($matriculas) && is_array($matriculas)) : ?>
-        <?php foreach ($matriculas as $matricula): ?>
-          <tr>
-            <td><?= $matricula['idmatricula']; ?></td>
-            <td><?= $matricula['alumno']; ?></td>
-            <td><?= $matricula['apoderado']; ?></td>
-            <td><?= $matricula['parentesco']; ?></td>
-            <td><?= $matricula['grupo']; ?></td>
-            <td><?= $matricula['anio_escolar']; ?></td>
-            <td><?= $matricula['turno']; ?></td>
-            <td><?= $matricula['fechamatricula']; ?></td>
-            <td>
-              <span class="badge bg-<?= $matricula['estado'] == 'Activo' ? 'success' : 'secondary'; ?>">
-                <?= $matricula['estado']; ?>
-              </span>
-            </td>
-            <td>
-              <?php if (!empty($matricula['codigo_qr'])): ?>
-                <img src="<?= base_url('uploads/qr/'.$matricula['codigo_qr']); ?>" 
-                     alt="QR" width="50" height="50">
-              <?php else: ?>
-                <span class="text-muted">No QR</span>
-              <?php endif; ?>
-            </td>
-            <td>
-              <a href="<?= base_url('matriculas/editar/'.$matricula['idmatricula']); ?>" 
-                 class="btn btn-warning btn-sm">Editar</a>
-              <a href="<?= base_url('matriculas/borrar/'.$matricula['idmatricula']); ?>" 
-                 class="btn btn-danger btn-sm" 
-                 onclick="return confirm('¿Seguro de eliminar la matrícula?');">Eliminar</a>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      <?php else : ?>
+  <!-- Botón Nueva Matrícula -->
+  <a href="<?= base_url('matriculas/crear'); ?>" class="btn btn-success mb-3">
+    <i class="bi bi-plus-circle"></i> Nueva Matrícula
+  </a>
+
+  <!-- TABLA -->
+  <div class="table-responsive">
+    <table class="table table-striped table-hover table-bordered align-middle">
+      <thead class="table-dark">
         <tr>
-          <td colspan="11" class="text-center">No hay matrículas registradas</td>
+          <th>#</th>
+          <th>Alumno</th>
+          <th>Apoderado</th>
+          <th>Grupo</th>
+          <th>Año Escolar</th>
+          <th>Turno</th>
+          <th>Estado</th>
+          <th>QR</th>
+          <th>Acciones</th>
         </tr>
-      <?php endif; ?>
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        <?php if (!empty($matriculas)): ?>
+          <?php foreach ($matriculas as $i => $m): ?>
+            <tr>
+              <td><?= $i + 1; ?></td>
+              <td><?= esc($m['alumno']); ?></td>
+              <td><?= esc($m['apoderado']); ?></td>
+              <td><?= esc($m['grupo']); ?></td>
+              <td><?= esc($m['anio_escolar']); ?></td>
+              <td><?= esc($m['turno']); ?></td>
+              <td>
+                <span class="badge <?= $m['estado'] == 'Activo' ? 'bg-success' : 'bg-danger'; ?>">
+                  <?= esc($m['estado']); ?>
+                </span>
+              </td>
+              <td class="text-center">
+                <?php if (!empty($m['codigo_qr'])): ?>
+                  <img src="<?= base_url($m['codigo_qr']); ?>" alt="QR" class="img-fluid" style="max-width: 100px;">
+                <?php else: ?>
+                  <span class="badge bg-danger">Sin QR</span>
+                <?php endif; ?>
+              </td>
+              <td class="text-center">
+                <a href="<?= base_url('matriculas/editar/' . $m['idmatricula']); ?>" class="btn btn-sm btn-warning">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+                <a href="<?= base_url('matriculas/borrar/' . $m['idmatricula']); ?>" class="btn btn-sm btn-danger" onclick="return confirm('¿Seguro de eliminar esta matrícula?')">
+                  <i class="bi bi-trash"></i>
+                </a>
+                <a href="<?= base_url('matriculas/carnet/' . $m['idmatricula']); ?>" class="btn btn-sm btn-success">
+                  <i class="bi bi-card-list"></i>
+                </a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <tr>
+            <td colspan="9" class="text-center">No hay matrículas registradas.</td>
+          </tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <?= $footer; ?>
+
+
+<!-- Inicializar Tooltip -->
+<script>
+  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+</script>
